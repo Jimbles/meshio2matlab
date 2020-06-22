@@ -1,6 +1,15 @@
 classdef meshio
-    %MESHIO Summary of this class goes here
-    %   Detailed explanation goes here
+    %MESHIO Matlab2Meshio functions
+    %   Use the python meshio library to read and write unstructured mesh
+    %   files .msh .vtu .vtk .xdmf tetgen ansys .stl .obj
+    %
+    %   more formats at:
+    %   https://github.com/nschloe/meshio
+    %
+    % meshio.read - read mesh file
+    % meshio.write - write matlab mesh to file
+    % meshio.plot - plot all contents of a meshfile
+    
     
     properties
         
@@ -72,17 +81,52 @@ classdef meshio
                 C(iCell).type=char(pymesh.cells{iCell}.type);
                 
                 % convert cell data to matlab array
-                nodestmp=pymesh.cells{iCell}.data;
-                nodes =meshio.np2mat(nodestmp);
+                tritmp=pymesh.cells{iCell}.data;
+                tri =meshio.np2mat(tritmp);
                 
                 % python uses 0 indexing
-                nodes= nodes+1;
+                tri= tri+1;
                 
-                C(iCell).nodes=nodes;
+                C(iCell).tri=tri;
+            end
+            
+            % get data - cannot convert from dict to struct as python
+            % allows spaces but matlab doesnt
+            
+            % cell data
+            cell_data_names_py=py.list(pymesh.cell_data.keys);
+            numCelldata=double(py.len(cell_data_names_py));
+            
+            if numCelldata > 0
+                cell_data_name=char(cell_data_names_py{1});
+                cell_data_py=pymesh.cell_data{cell_data_name}{1};
+                cell_data=meshio.np2mat(cell_data_py);
+                
+                objout.cell_data=cell_data;
+                objout.cell_data_name=cell_data_name;
+            else
+                cell_data=[];
+                cell_data_name='';
+            end
+            
+            % point data
+            point_data_names_py=py.list(pymesh.point_data.keys);
+            numPointdata=double(py.len(point_data_names_py));
+            
+            if numPointdata > 0
+                point_data_name=char(point_data_names_py{1});
+                point_data_py=pymesh.point_data{point_data_name}{1};
+                point_data=meshio.np2mat(point_data_py);
+                
+                objout.point_data=point_data;
+                objout.point_data_name=cell_data_name;
+            else
+                point_data=[];
+                point_data_name='';
             end
             
             objout.numCells=numCells;
-            objout.Cells=C;
+            objout.cells=C;
             objout.pymesh=pymesh;
             
             % print output
@@ -92,25 +136,25 @@ classdef meshio
             fprintf('Cells: %d\n',numCells);
             
             for iCell=1:numCells
-                fprintf('Cell %d: %s %d elements\n',iCell,C(iCell).type,size(C(iCell).nodes,1));
+                fprintf('Cell %d: %s %d elements\n',iCell,C(iCell).type,size(C(iCell).tri,1));
             end
             
         end
         
-        function fileout = write(filename,points,nodes,celldata,dataname)
+        function fileout = write(filename,points,nodes,data,dataname)
+            %write write mesh to file using meshio library
+            %
+            %
             
-            % check celldata and nodes match, transpose is ok
-            if ~any(size(nodes,1) == (size(celldata)))
-                error('nodes and celldata dont match');
-            end
             
+            fprintf('Meshio writing to meshfile : %s\n',filename);
+            
+            % ------ convert points and cells ------
             
             % need to know triangle or tetra
             
             if size(nodes,2) ==4
-            
-            celltype='tetra';
-            
+                celltype='tetra';
             else
                 if size(nodes,2) ==3
                     celltype='triangle';
@@ -120,27 +164,107 @@ classdef meshio
             end
             
             % convert cell array correct for python 0 indexing
-            pycells=meshio.mat2nparray(nodes -1);
+            % meshio needs nodes as int32
+            pycells = meshio.mat2nparray(int32(nodes -1));
             
             % put nodes into a list of CellBlock type
-            pycellblock=py.meshio.CellBlock(celltype,pycells);
-            pycellslist=py.list({pycellblock});
+            pycellblock = py.meshio.CellBlock(celltype,pycells);
+            pycellslist = py.list({pycellblock});
             
             % convert points into array
             pypoints = meshio.mat2nparray(points);
             
+            % ------ convert cell or point data if needed ------
             
-            % meshio needs data in certain way:
-            % celldict{'dataname' : list[nparray]}
+            % default dataname
+            if exist('dataname','var') == 0  || isempty(dataname)
+                dataname = 'Data';
+            end
             
-            npdata = meshio.mat2nparray(celldata);
-            datalist = py.list({npdata});
-            datadict=py.dict(pyargs(dataname,datalist));
+            % write data if it exists
+            if (exist('data','var') == 1  && ~isempty(data))
+                celldata=0;
+                pointdata=0;
+                % check celldata and nodes match, transpose is ok
+                
+                if any(size(nodes,1) == (size(data)))
+                    celldata=1;
+                else
+                    if any(size(points,1) == (size(data)))
+                        pointdata=1;
+                    end
+                end
+                
+                
+                if ~any([celldata pointdata])
+                    error('Data does not match number cells for celldata or points for pointdata');
+                end
+                
+                % meshio needs data in certain way:
+                % celldict{'dataname' : list[nparray]}
+                
+                npdata   = meshio.mat2nparray(data);
+                
+                if celldata
+                    
+                    
+                    datalist = py.list({npdata});
+                    datadict = py.dict(pyargs(dataname,datalist));
+                    dataargs=pyargs('cell_data',datadict);
+                else
+                    if pointdata
+                        datadict = py.dict(pyargs(dataname,npdata));
+                        dataargs=pyargs('point_data',datadict);
+                        
+                        
+                    end
+                end
+            end
             
-            % write the file out
-            py.meshio.write_points_cells(filename,pypoints,pycellslist,pyargs('cell_data',datadict));
+            % write the file out adding data arguments i.e. cell_data=data
+            % in python
+            if (exist('dataargs','var') == 1)
+                py.meshio.write_points_cells(filename,pypoints,pycellslist,dataargs);
+            else
+                
+                %write with no extra arguments
+                py.meshio.write_points_cells(filename,pypoints,pycellslist);
+            end
         end
         
+        function h = plot(objin)
+            %plot plot all elements within a chosen file
+            % plots verticies, lines and triangles. plots surface mesh of
+            % tetra meshes
+            % Use paraview for viewing data as its much better!
+            
+            figure
+            hold on
+            
+            colours=lines(10);
+            
+            for iCell = objin.numCells:-1:1 %go backwards so smaller elements show on top of tetra/tri
+                curCell=objin.cells(iCell).tri;
+                
+                switch size(objin.cells(iCell).tri,2)
+                    case 1 %verticies plot as points
+                        plot3(objin.vtx(curCell,1),objin.vtx(curCell,2),objin.vtx(curCell,3),'*','color',colours(1,:));
+                    case 2 % lines plot as separate lines
+                        for iLine = 1:size(curCell,1)
+                            plot3([objin.vtx(curCell(:,1),1) objin.vtx(curCell(:,2),1)],[objin.vtx(curCell(:,1),2) objin.vtx(curCell(:,2),2)],[objin.vtx(curCell(:,1),3) objin.vtx(curCell(:,2),3)],'color',colours(2,:),'Linewidth',1.5);
+                        end
+                    case 3 % triangles plot as surface
+                        h= trisurf(curCell, objin.vtx(:,1), objin.vtx(:,2), objin.vtx(:,3));
+                        %                         set(h,'EdgeColor',colours(3,:)*0.9,'FaceColor',colours(3,:));
+                    case 4 % tetra plot surface only as tetramesh is v slow
+                        trep = triangulation(curCell, objin.vtx);
+                        [Triangle_Boundary, Nodes_Boundary] = freeBoundary(trep);
+                        h= trisurf(Triangle_Boundary, Nodes_Boundary(:,1), Nodes_Boundary(:,2), Nodes_Boundary(:,3));
+                        set(h,'EdgeColor',[0.3,0.3,0.3],'FaceColor','w','FaceAlpha',1);
+                end
+            end
+            daspect([1,1,1]);
+        end
         
         function arrayout = mat2nparray( matarray )
             %mat2nparray Convert a Matlab array into an nparray
