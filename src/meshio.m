@@ -9,6 +9,11 @@ classdef meshio
     % meshio.read - read mesh file
     % meshio.write - write matlab mesh to file
     % meshio.plot - plot all contents of a meshfile
+    %
+    % 
+    % utilities
+    % meshio.np2mat - np array to matlab array
+    % meshio.mat2nparray - matlab to np array
     
     
     properties
@@ -59,6 +64,14 @@ classdef meshio
             %read read mesh file using meshio
             %   Calls python meshio library and processes output to a
             %   matlab struct
+            %
+            % objout.vtx - verticies
+            % objout.Cells - structure array for each geometry saved in file
+            % objout.Cells.tri - Trigangulation connectivity list for this cell
+            % objout.Cells.type - 'Tetra','Triangle','Line','Vertex'
+         
+            
+            
             
             fprintf('Meshio reading meshfile : %s\n',filename);
             
@@ -125,7 +138,6 @@ classdef meshio
                 point_data_name='';
             end
             
-            objout.numCells=numCells;
             objout.cells=C;
             objout.pymesh=pymesh;
             
@@ -144,7 +156,12 @@ classdef meshio
         function fileout = write(filename,points,nodes,data,dataname)
             %write write mesh to file using meshio library
             %
-            %
+            % Inputs
+            % filename - needs extension
+            % points - vtx
+            % nodes - connectivity array
+            % [data] - optional must match size of points or nodes
+            % [dataname] - optional string
             
             
             fprintf('Meshio writing to meshfile : %s\n',filename);
@@ -185,8 +202,8 @@ classdef meshio
             if (exist('data','var') == 1  && ~isempty(data))
                 celldata=0;
                 pointdata=0;
-                % check celldata and nodes match, transpose is ok
                 
+                % check celldata and nodes match, transpose is ok
                 if any(size(nodes,1) == (size(data)))
                     celldata=1;
                 else
@@ -195,28 +212,27 @@ classdef meshio
                     end
                 end
                 
-                
                 if ~any([celldata pointdata])
                     error('Data does not match number cells for celldata or points for pointdata');
                 end
                 
-                % meshio needs data in certain way:
-                % celldict{'dataname' : list[nparray]}
-                
+                %convert data into pyton nparray
                 npdata   = meshio.mat2nparray(data);
                 
+                %data is different format for cell or point data
                 if celldata
-                    
+                    % meshio needs data in certain way:
+                    % celldict{'dataname' : list[nparray]}
                     
                     datalist = py.list({npdata});
                     datadict = py.dict(pyargs(dataname,datalist));
                     dataargs=pyargs('cell_data',datadict);
                 else
                     if pointdata
+                        % meshio needs data in certain way:
+                        % celldict{'dataname' : nparray}
                         datadict = py.dict(pyargs(dataname,npdata));
                         dataargs=pyargs('point_data',datadict);
-                        
-                        
                     end
                 end
             end
@@ -226,7 +242,6 @@ classdef meshio
             if (exist('dataargs','var') == 1)
                 py.meshio.write_points_cells(filename,pypoints,pycellslist,dataargs);
             else
-                
                 %write with no extra arguments
                 py.meshio.write_points_cells(filename,pypoints,pycellslist);
             end
@@ -237,13 +252,13 @@ classdef meshio
             % plots verticies, lines and triangles. plots surface mesh of
             % tetra meshes
             % Use paraview for viewing data as its much better!
-            
+            numCells = size(objin.cells,2);
             figure
             hold on
             
             colours=lines(10);
             
-            for iCell = objin.numCells:-1:1 %go backwards so smaller elements show on top of tetra/tri
+            for iCell = numCells:-1:1 %go backwards so smaller elements show on top of tetra/tri
                 curCell=objin.cells(iCell).tri;
                 
                 switch size(objin.cells(iCell).tri,2)
@@ -253,17 +268,18 @@ classdef meshio
                         for iLine = 1:size(curCell,1)
                             plot3([objin.vtx(curCell(:,1),1) objin.vtx(curCell(:,2),1)],[objin.vtx(curCell(:,1),2) objin.vtx(curCell(:,2),2)],[objin.vtx(curCell(:,1),3) objin.vtx(curCell(:,2),3)],'color',colours(2,:),'Linewidth',1.5);
                         end
-                    case 3 % triangles plot as surface
+                    case 3 % triangles plot as surface - orange
                         h= trisurf(curCell, objin.vtx(:,1), objin.vtx(:,2), objin.vtx(:,3));
                         %                         set(h,'EdgeColor',colours(3,:)*0.9,'FaceColor',colours(3,:));
                     case 4 % tetra plot surface only as tetramesh is v slow
                         trep = triangulation(curCell, objin.vtx);
                         [Triangle_Boundary, Nodes_Boundary] = freeBoundary(trep);
                         h= trisurf(Triangle_Boundary, Nodes_Boundary(:,1), Nodes_Boundary(:,2), Nodes_Boundary(:,3));
-                        set(h,'EdgeColor',[0.3,0.3,0.3],'FaceColor','w','FaceAlpha',1);
+                        set(h,'EdgeColor',[0.3,0.3,0.3],'FaceColor','w','FaceAlpha',1); % make tetra grey so easier to see other geometry
                 end
             end
             daspect([1,1,1]);
+            title(sprintf('Geometry in meshio file, with %d cells',numCells))
         end
         
         function arrayout = mat2nparray( matarray )
