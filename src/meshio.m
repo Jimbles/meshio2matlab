@@ -132,7 +132,7 @@ classdef meshio
                 point_data=meshio.np2mat(point_data_py);
                 
                 objout.point_data=point_data;
-                objout.point_data_name=cell_data_name;
+                objout.point_data_name=point_data_name;
             else
                 point_data=[];
                 point_data_name='';
