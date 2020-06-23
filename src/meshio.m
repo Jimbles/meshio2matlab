@@ -128,9 +128,13 @@ classdef meshio
             
             if numPointdata > 0
                 point_data_name=char(point_data_names_py{1});
-                point_data_py=pymesh.point_data{point_data_name}{1};
+                if length(pymesh.point_data{point_data_name}) > 1
+                    point_data_py=pymesh.point_data{point_data_name}{1};
+                else
+                    point_data_py=pymesh.point_data{point_data_name};
+                end
                 point_data=meshio.np2mat(point_data_py);
-                
+
                 objout.point_data=point_data;
                 objout.point_data_name=point_data_name;
             else
