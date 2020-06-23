@@ -127,16 +127,18 @@ classdef meshio
             numPointdata=double(py.len(point_data_names_py));
             
             if numPointdata > 0
-                point_data_name=char(point_data_names_py{1});
-                if length(pymesh.point_data{point_data_name}) > 1
-                    point_data_py=pymesh.point_data{point_data_name}{1};
-                else
-                    point_data_py=pymesh.point_data{point_data_name};
-                end
-                point_data=meshio.np2mat(point_data_py);
+                for iP = 1:numPointdata
+                    point_data_name=char(point_data_names_py{iP});
+                    if length(pymesh.point_data{point_data_name}) > 1
+                        point_data_py=pymesh.point_data{point_data_name}{1};
+                    else
+                        point_data_py=pymesh.point_data{point_data_name};                    
+                    end
+                    point_data=meshio.np2mat(point_data_py);
 
-                objout.point_data=point_data;
-                objout.point_data_name=point_data_name;
+                    objout.point_data{iP}=point_data;
+                    objout.point_data_name{iP}=point_data_name;
+                end
             else
                 point_data=[];
                 point_data_name='';
