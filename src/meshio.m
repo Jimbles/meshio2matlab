@@ -10,7 +10,7 @@ classdef meshio
     % meshio.write - write matlab mesh to file
     % meshio.plot - plot all contents of a meshfile
     %
-    % 
+    %
     % utilities
     % meshio.np2mat - np array to matlab array
     % meshio.mat2nparray - matlab to np array
@@ -61,17 +61,21 @@ classdef meshio
         
         
         function objout = read(filename)
-            %read read mesh file using meshio
+            %meshio.read read mesh file using python meshio
             %   Calls python meshio library and processes output to a
             %   matlab struct
             %
             % objout.vtx - verticies
             % objout.Cells - structure array for each geometry saved in file
-            % objout.Cells.tri - Trigangulation connectivity list for this cell
-            % objout.Cells.type - 'Tetra','Triangle','Line','Vertex'
-         
+            %       .Cells.tri - Trigangulation connectivity list for this cell
+            %       .Cells.type - 'Tetra','Triangle','Line','Vertex'
+            % objout.cell_data - data for each element {cell array}
+            % objout.cell_data_name - {cell array}
+            % objout.point_data - data for each vertex {cell array}
+            % objout.point_data_name - {cell array}
             
             
+            % ------ load meshes ------ 
             
             fprintf('Meshio reading meshfile : %s\n',filename);
             
@@ -83,7 +87,7 @@ classdef meshio
             
             objout.vtx=vtx;
             
-            % files can have mix of data
+            % files can have mix of data tetra/tri/line/point
             numCells=size(pymesh.cells,2);
             
             % for each cell data array save the type and data
@@ -103,23 +107,33 @@ classdef meshio
                 C(iCell).tri=tri;
             end
             
-            % get data - cannot convert from dict to struct as python
-            % allows spaces but matlab doesnt
+            % ------ load data ------ 
+            
+            % cannot convert from dict to struct directly as
+            % python allows spaces in dict keys but matlab doesnt in
+            % struct fields
             
             % cell data
             cell_data_names_py=py.list(pymesh.cell_data.keys);
             numCelldata=double(py.len(cell_data_names_py));
             
             if numCelldata > 0
-                cell_data_name=char(cell_data_names_py{1});
-                cell_data_py=pymesh.cell_data{cell_data_name}{1};
-                cell_data=meshio.np2mat(cell_data_py);
-                
-                objout.cell_data=cell_data;
-                objout.cell_data_name=cell_data_name;
+                for iCelldata = 1:numCelldata
+                    
+                    % find name in dict
+                    cell_data_name=char(cell_data_names_py{iCelldata});
+                    
+                    % get value for this key, data is stored in list so get
+                    % the first (only?) array in this list
+                    cell_data_py=pymesh.cell_data{cell_data_name}{1};
+                    cell_data=meshio.np2mat(cell_data_py);
+                    
+                    objout.cell_data{iCelldata}=cell_data;
+                    objout.cell_data_name{iCelldata}=cell_data_name;
+                end
             else
-                cell_data=[];
-                cell_data_name='';
+                objout.cell_data=cell(1);
+                objout.cell_data_name=cell(1);
             end
             
             % point data
@@ -127,40 +141,54 @@ classdef meshio
             numPointdata=double(py.len(point_data_names_py));
             
             if numPointdata > 0
-                for iP = 1:numPointdata
-                    point_data_name=char(point_data_names_py{iP});
+                for iPointdata = 1:numPointdata
+                    
+                    %find name in dict
+                    point_data_name=char(point_data_names_py{iPointdata});
+                    
+                    %get value for this key, usually stored as an array,
+                    %but sometimes stored as list so check for that
                     if length(pymesh.point_data{point_data_name}) > 1
                         point_data_py=pymesh.point_data{point_data_name}{1};
                     else
-                        point_data_py=pymesh.point_data{point_data_name};                    
+                        point_data_py=pymesh.point_data{point_data_name};
                     end
+                    
                     point_data=meshio.np2mat(point_data_py);
-
-                    objout.point_data{iP}=point_data;
-                    objout.point_data_name{iP}=point_data_name;
+                    
+                    objout.point_data{iPointdata}=point_data;
+                    objout.point_data_name{iPointdata}=point_data_name;
                 end
             else
-                point_data=[];
-                point_data_name='';
+                objout.point_data=cell(1);
+                objout.point_data_name=cell(1);
             end
             
             objout.cells=C;
             objout.pymesh=pymesh;
             
-            % print output
+            % ------ print output ------
             numvtx=size(vtx,1);
             
-            fprintf('Verticies: %d \n',numvtx);
-            fprintf('Cells: %d\n',numCells);
+            fprintf('Verticies: %d and Cells: %d\n',numvtx,numCells);
             
             for iCell=1:numCells
                 fprintf('Cell %d: %s %d elements\n',iCell,C(iCell).type,size(C(iCell).tri,1));
             end
             
+            if (numPointdata > 0)
+                fprintf('Point data: %s\n',strjoin(objout.point_data_name))
+            end
+            
+            if (numPointdata > 0)
+                fprintf('Cell data: %s\n',strjoin(objout.cell_data_name))
+            end
+            
+            
         end
         
         function fileout = write(filename,points,nodes,data,dataname)
-            %write write mesh to file using meshio library
+            %meshio.write write mesh to file using meshio library
             %
             % Inputs
             % filename - needs extension
