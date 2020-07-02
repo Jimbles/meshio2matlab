@@ -10,7 +10,7 @@ classdef meshio
     % meshio.write - write matlab mesh to file
     % meshio.plot - plot all contents of a meshfile
     %
-    % 
+    %
     % utilities
     % meshio.np2mat - np array to matlab array
     % meshio.mat2nparray - matlab to np array
@@ -61,17 +61,21 @@ classdef meshio
         
         
         function objout = read(filename)
-            %read read mesh file using meshio
+            %meshio.read read mesh file using python meshio
             %   Calls python meshio library and processes output to a
             %   matlab struct
             %
             % objout.vtx - verticies
             % objout.Cells - structure array for each geometry saved in file
-            % objout.Cells.tri - Trigangulation connectivity list for this cell
-            % objout.Cells.type - 'Tetra','Triangle','Line','Vertex'
-         
+            %       .Cells.tri - Trigangulation connectivity list for this cell
+            %       .Cells.type - 'Tetra','Triangle','Line','Vertex'
+            % objout.cell_data - data for each element {cell array}
+            % objout.cell_data_name - {cell array}
+            % objout.point_data - data for each vertex {cell array}
+            % objout.point_data_name - {cell array}
             
             
+            % ------ load meshes ------
             
             fprintf('Meshio reading meshfile : %s\n',filename);
             
@@ -83,7 +87,7 @@ classdef meshio
             
             objout.vtx=vtx;
             
-            % files can have mix of data
+            % files can have mix of data tetra/tri/line/point
             numCells=size(pymesh.cells,2);
             
             % for each cell data array save the type and data
@@ -103,23 +107,33 @@ classdef meshio
                 C(iCell).tri=tri;
             end
             
-            % get data - cannot convert from dict to struct as python
-            % allows spaces but matlab doesnt
+            % ------ load data ------
+            
+            % cannot convert from dict to struct directly as
+            % python allows spaces in dict keys but matlab doesnt in
+            % struct fields
             
             % cell data
             cell_data_names_py=py.list(pymesh.cell_data.keys);
             numCelldata=double(py.len(cell_data_names_py));
             
             if numCelldata > 0
-                cell_data_name=char(cell_data_names_py{1});
-                cell_data_py=pymesh.cell_data{cell_data_name}{1};
-                cell_data=meshio.np2mat(cell_data_py);
-                
-                objout.cell_data=cell_data;
-                objout.cell_data_name=cell_data_name;
+                for iCelldata = 1:numCelldata
+                    
+                    % find name in dict
+                    cell_data_name=char(cell_data_names_py{iCelldata});
+                    
+                    % get value for this key, data is stored in list so get
+                    % the first (only?) array in this list
+                    cell_data_py=pymesh.cell_data{cell_data_name}{1};
+                    cell_data=meshio.np2mat(cell_data_py);
+                    
+                    objout.cell_data{iCelldata}=cell_data;
+                    objout.cell_data_name{iCelldata}=cell_data_name;
+                end
             else
-                cell_data=[];
-                cell_data_name='';
+                objout.cell_data=cell(1);
+                objout.cell_data_name=cell(1);
             end
             
             % point data
@@ -127,39 +141,59 @@ classdef meshio
             numPointdata=double(py.len(point_data_names_py));
             
             if numPointdata > 0
-                point_data_name=char(point_data_names_py{1});
-                point_data_py=pymesh.point_data{point_data_name}{1};
-                point_data=meshio.np2mat(point_data_py);
-                
-                objout.point_data=point_data;
-                objout.point_data_name=cell_data_name;
+                for iPointdata = 1:numPointdata
+                    
+                    %find name in dict
+                    point_data_name=char(point_data_names_py{iPointdata});
+                    
+                    %get value for this key, usually stored as an array,
+                    %but sometimes stored as list so check for that
+                    if length(pymesh.point_data{point_data_name}) > 1
+                        point_data_py=pymesh.point_data{point_data_name}{1};
+                    else
+                        point_data_py=pymesh.point_data{point_data_name};
+                    end
+                    
+                    point_data=meshio.np2mat(point_data_py);
+                    
+                    objout.point_data{iPointdata}=point_data;
+                    objout.point_data_name{iPointdata}=point_data_name;
+                end
             else
-                point_data=[];
-                point_data_name='';
+                objout.point_data=cell(1);
+                objout.point_data_name=cell(1);
             end
             
             objout.cells=C;
             objout.pymesh=pymesh;
             
-            % print output
+            % ------ print output ------
             numvtx=size(vtx,1);
             
-            fprintf('Verticies: %d \n',numvtx);
-            fprintf('Cells: %d\n',numCells);
+            fprintf('Verticies: %d and Cells: %d\n',numvtx,numCells);
             
             for iCell=1:numCells
                 fprintf('Cell %d: %s %d elements\n',iCell,C(iCell).type,size(C(iCell).tri,1));
             end
             
+            if (numPointdata > 0)
+                fprintf('Point data: %s\n',strjoin(objout.point_data_name))
+            end
+            
+            if (numCelldata > 0)
+                fprintf('Cell data: %s\n',strjoin(objout.cell_data_name))
+            end
+            
+            
         end
         
-        function fileout = write(filename,points,nodes,data,dataname)
-            %write write mesh to file using meshio library
+        function fileout = write(filename,points,cells,cell_data,cell_data_name,point_data,point_data_name)
+            %meshio.write write mesh to file using meshio library
             %
             % Inputs
             % filename - needs extension
             % points - vtx
-            % nodes - connectivity array
+            % cells - connectivity array
             % [data] - optional must match size of points or nodes
             % [dataname] - optional string
             
@@ -167,75 +201,175 @@ classdef meshio
             fprintf('Meshio writing to meshfile : %s\n',filename);
             
             % ------ convert points and cells ------
-            
-            % need to know triangle or tetra
-            
-            if size(nodes,2) ==4
-                celltype='tetra';
-            else
-                if size(nodes,2) ==3
-                    celltype='triangle';
-                else
-                    error('nodes must be Nx3 or Nx4');
-                end
-            end
-            
-            % convert cell array correct for python 0 indexing
-            % meshio needs nodes as int32
-            pycells = meshio.mat2nparray(int32(nodes -1));
-            
-            % put nodes into a list of CellBlock type
-            pycellblock = py.meshio.CellBlock(celltype,pycells);
-            pycellslist = py.list({pycellblock});
-            
             % convert points into array
             pypoints = meshio.mat2nparray(points);
             
-            % ------ convert cell or point data if needed ------
             
-            % default dataname
-            if exist('dataname','var') == 0  || isempty(dataname)
-                dataname = 'Data';
-            end
-            
-            % write data if it exists
-            if (exist('data','var') == 1  && ~isempty(data))
-                celldata=0;
-                pointdata=0;
+            %if not structure nodes.tri and nodes.type then make one
+            if ~isstruct(cells)
                 
-                % check celldata and nodes match, transpose is ok
-                if any(size(nodes,1) == (size(data)))
-                    celldata=1;
+                % need to know triangle or tetra
+                if size(cells,2) ==4
+                    celltype='tetra';
                 else
-                    if any(size(points,1) == (size(data)))
-                        pointdata=1;
+                    if size(cells,2) ==3
+                        celltype='triangle';
+                    else
+                        error('nodes must be Nx3 or Nx4');
                     end
                 end
+                % convert cells into struct form
+                cellstmp=cells;
+                clear cells;
+                cells.tri=cellstmp;
+                cells.type=celltype;
+            end
+            
+            pycellslist=py.list;
+            
+            nCells=size(cells,2);
+            vertexwarn=0;
+            
+            for iC=1:nCells
                 
-                if ~any([celldata pointdata])
-                    error('Data does not match number cells for celldata or points for pointdata');
+                % convert cell array correct for python 0 indexing
+                % meshio needs nodes as int32
+                pycells = meshio.mat2nparray(int32(cells(iC).tri -1));
+                
+                %correct for wrong shape if only 1 vertex - Not working as
+                %getting Python Error: IndexError: tuple index out of range
+                if size(cells(iC).tri) ==1
+                    pycells=py.numpy.reshape(pycells,int32(1));
+                    if vertexwarn==0
+                    fprintf(2,'Writing verticies not currently working, so ignoring all\n');
+                    vertexwarn=1;
+                    end
+                    continue
                 end
-                
-                %convert data into pyton nparray
-                npdata   = meshio.mat2nparray(data);
-                
-                %data is different format for cell or point data
-                if celldata
-                    % meshio needs data in certain way:
-                    % celldict{'dataname' : list[nparray]}
                     
-                    datalist = py.list({npdata});
-                    datadict = py.dict(pyargs(dataname,datalist));
-                    dataargs=pyargs('cell_data',datadict);
-                else
-                    if pointdata
-                        % meshio needs data in certain way:
-                        % celldict{'dataname' : nparray}
-                        datadict = py.dict(pyargs(dataname,npdata));
-                        dataargs=pyargs('point_data',datadict);
+                % put nodes into a list of CellBlock type
+                 %pycellblock = py.meshio.CellBlock(cells(iC).type,pycells);
+                pycellblock=py.tuple({cells(iC).type,pycells});
+                
+                pycellslist.append(pycellblock);
+            end
+            
+            
+            % ------ convert cell and point data if needed ------
+            
+            % check if cell data exists
+            celldata =0;
+            pointdata =0;
+            
+            if (exist('cell_data','var') == 1  && ~isempty(cell_data))
+                celldata=1;
+            end
+            
+            if (exist('point_data','var') == 1  && ~isempty(point_data))
+                pointdata=1;
+            end
+            % ------ cell data ------
+            
+            if celldata
+                fprintf('Writing cell data...');
+                
+                if (exist('cell_data_name','var') == 0  && isempty(cell_data))
+                    error('cell_data needs cell_data_name');
+                end
+                
+                if ~iscell(cell_data) || ~iscell(cell_data_name)
+                    error('cell_data and cell_data name must be cell arrays');
+                end
+                
+                if size(cell_data,2) ~= size(cell_data_name,2)
+                    error('cell_data and cell_data must be same length');
+                end
+                % meshio needs data in certain way:
+                % celldict{'dataname' : list[nparray]}
+                
+                numCelldata=size(cell_data,2);
+                CelldataDict=py.dict;
+                
+                for iCelldata=1:numCelldata
+                    curData=cell_data{iCelldata};
+                    curName=cell_data_name{iCelldata};
+                    fprintf(' %s ',curName);
+                    
+                    if ~any(size(curData) == size(cells,1))
+                        warning('Celldata %d %s does not match number of elements/cells',iCelldata,curName);
                     end
+                    
+                    % convert data into pyton nparray
+                    curData_py   = meshio.mat2nparray(curData);
+                    
+                    % convert into list
+                    curDatalist = py.list({curData_py});
+                    % update dict
+                    CelldataDict.update(pyargs(curName,curDatalist));
+                    
+                end
+                fprintf('\n');
+            end
+            
+            % ------ point data ------
+            
+            if pointdata
+                fprintf('Writing point data...');
+                
+                if (exist('point_data_name','var') == 0  && isempty(point_data))
+                    error('point_data needs point_data_name');
+                end
+                
+                if ~iscell(point_data) || ~iscell(point_data_name)
+                    error('point data and point_data name must be cell arrays');
+                end
+                
+                if size(point_data,2) ~= size(point_data_name,2)
+                    error('point_data and point_data must be same length');
+                end
+                
+                
+                % meshio needs data in certain way:
+                % pointdict{'dataname' : nparray}
+                
+                numPointdata=size(point_data,2);
+                PointdataDict=py.dict;
+                
+                for iPointdata=1:numPointdata
+                    curData=point_data{iPointdata};
+                    curName=point_data_name{iPointdata};
+                    fprintf(' %s ',curName);
+                    
+                    if ~any(size(curData) == size(points,1))
+                        warning('Pointdata %d %s does not match number of elements/cells',iPointdata,curName);
+                    end
+                    
+                    % convert data into pyton nparray
+                    curData_py   = meshio.mat2nparray(curData);
+                    
+                    % update dict
+                    PointdataDict.update(pyargs(curName,curData_py));
+                    
+                end
+                fprintf('\n');
+            end
+            
+            % ------ call meshio ------
+            
+            % need to create python cell_data=data point_data=data etc.
+            % cannot combine pyarg types, so using this kludge for now:
+            if (celldata && pointdata)
+                dataargs=pyargs('cell_data',CelldataDict,'point_data',PointdataDict);
+            else
+                if celldata
+                    dataargs=pyargs('cell_data',CelldataDict);
+                end
+                
+                if pointdata
+                    dataargs=pyargs('point_data',PointdataDict);
                 end
             end
+            
             
             % write the file out adding data arguments i.e. cell_data=data
             % in python
@@ -246,6 +380,42 @@ classdef meshio
                 py.meshio.write_points_cells(filename,pypoints,pycellslist);
             end
         end
+        
+        function fileout = structwrite(filename,objin)
+            %meshio.structwrite write file using struct output from meshio.read
+            % this function is a wrapper for meshio.write
+            
+            Docelldata=0;
+            Dopointdata=0;
+            
+            if all(isfield(objin,{'cell_data','cell_data_name'}))
+                if ~isempty(objin.cell_data{1})
+                    Docelldata=1;
+                end
+            end
+            
+            if all(isfield(objin,{'point_data','point_data_name'}))
+                if ~isempty(objin.point_data{1})
+                    Dopointdata=1;
+                end
+            end
+            
+            if (Docelldata && Dopointdata)
+                
+                meshio.write(filename,objin.vtx,objin.cells,objin.cell_data,objin.cell_data_name,objin.point_data,objin.point_data_name)
+            else
+                if Docelldata
+                    meshio.write(filename,objin.vtx,objin.cells,objin.cell_data,objin.cell_data_name)
+                end
+                if Dopointdata
+                    meshio.write(filename,objin.vtx,objin.cells,[],[],objin.point_data,objin.point_data_name)
+                end
+                if ~any([Docelldata Dopointdata])
+                    meshio.write(filename,objin.vtx,objin.cells);
+                end
+            end
+        end
+        
         
         function h = plot(objin)
             %plot plot all elements within a chosen file
