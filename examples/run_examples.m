@@ -58,6 +58,7 @@ meshio.structwrite('examplecell.vtu',C);
 meshio.structwrite('examplepoint.vtu',E);
 meshio.structwrite('examplepointcell.vtu',F);
 
+
 %% read gmsh file
 
 % example gmsh file is conversion from .stl file 
@@ -68,10 +69,14 @@ fname=('finger_3D.msh');
 P=meshio.read(fname);
 meshio.plot(P);
 
-% extract just the tetrahedra
+% extract just the lines/triangles/tetrahedra
 Ptet=P;
-Ptet.cells=Ptet.cells(end);
+Ptet.cells=Ptet.cells(23:end);
 meshio.plot(Ptet);
+
+meshio.structwrite('examplemulti.vtu',Ptet);
+
+
 %% read vtu and write new data
 fname=('NNexample.vtu');
 fnameoutcell='NNexampleNewDataC.vtu';

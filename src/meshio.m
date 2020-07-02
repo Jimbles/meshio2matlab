@@ -187,13 +187,13 @@ classdef meshio
             
         end
         
-        function fileout = write(filename,points,nodes,cell_data,cell_data_name,point_data,point_data_name)
+        function fileout = write(filename,points,cells,cell_data,cell_data_name,point_data,point_data_name)
             %meshio.write write mesh to file using meshio library
             %
             % Inputs
             % filename - needs extension
             % points - vtx
-            % nodes - connectivity array
+            % cells - connectivity array
             % [data] - optional must match size of points or nodes
             % [dataname] - optional string
             
@@ -201,36 +201,61 @@ classdef meshio
             fprintf('Meshio writing to meshfile : %s\n',filename);
             
             % ------ convert points and cells ------
-            
-            % need to know triangle or tetra
-            
-            if size(nodes,2) ==4
-                celltype='tetra';
-            else
-                if size(nodes,2) ==3
-                    celltype='triangle';
-                else
-                    error('nodes must be Nx3 or Nx4');
-                end
-            end
-            
-            % convert cell array correct for python 0 indexing
-            % meshio needs nodes as int32
-            pycells = meshio.mat2nparray(int32(nodes -1));
-            
-            % put nodes into a list of CellBlock type
-            pycellblock = py.meshio.CellBlock(celltype,pycells);
-            pycellslist = py.list({pycellblock});
-            
             % convert points into array
             pypoints = meshio.mat2nparray(points);
             
-            % ------ convert cell and point data if needed ------
             
-            %             % default dataname
-            %             if exist('dataname','var') == 0  || isempty(dataname)
-            %                 dataname = 'Data';
-            %             end
+            %if not structure nodes.tri and nodes.type then make one
+            if ~isstruct(cells)
+                
+                % need to know triangle or tetra
+                if size(cells,2) ==4
+                    celltype='tetra';
+                else
+                    if size(cells,2) ==3
+                        celltype='triangle';
+                    else
+                        error('nodes must be Nx3 or Nx4');
+                    end
+                end
+                % convert cells into struct form
+                cellstmp=cells;
+                clear cells;
+                cells.tri=cellstmp;
+                cells.type=celltype;
+            end
+            
+            pycellslist=py.list;
+            
+            nCells=size(cells,2);
+            vertexwarn=0;
+            
+            for iC=1:nCells
+                
+                % convert cell array correct for python 0 indexing
+                % meshio needs nodes as int32
+                pycells = meshio.mat2nparray(int32(cells(iC).tri -1));
+                
+                %correct for wrong shape if only 1 vertex - Not working as
+                %getting Python Error: IndexError: tuple index out of range
+                if size(cells(iC).tri) ==1
+                    pycells=py.numpy.reshape(pycells,int32(1));
+                    if vertexwarn==0
+                    fprintf(2,'Writing verticies not currently working, so ignoring all\n');
+                    vertexwarn=1;
+                    end
+                    continue
+                end
+                    
+                % put nodes into a list of CellBlock type
+                 %pycellblock = py.meshio.CellBlock(cells(iC).type,pycells);
+                pycellblock=py.tuple({cells(iC).type,pycells});
+                
+                pycellslist.append(pycellblock);
+            end
+            
+            
+            % ------ convert cell and point data if needed ------
             
             % check if cell data exists
             celldata =0;
@@ -270,7 +295,7 @@ classdef meshio
                     curName=cell_data_name{iCelldata};
                     fprintf(' %s ',curName);
                     
-                    if ~any(size(curData) == size(nodes,1))
+                    if ~any(size(curData) == size(cells,1))
                         warning('Celldata %d %s does not match number of elements/cells',iCelldata,curName);
                     end
                     
@@ -314,7 +339,7 @@ classdef meshio
                     curData=point_data{iPointdata};
                     curName=point_data_name{iPointdata};
                     fprintf(' %s ',curName);
-
+                    
                     if ~any(size(curData) == size(points,1))
                         warning('Pointdata %d %s does not match number of elements/cells',iPointdata,curName);
                     end
@@ -357,8 +382,8 @@ classdef meshio
         end
         
         function fileout = structwrite(filename,objin)
-            %meshio.structwrite write file using struct output from meshio.read 
-            % this function is a wrapper for meshio.write 
+            %meshio.structwrite write file using struct output from meshio.read
+            % this function is a wrapper for meshio.write
             
             Docelldata=0;
             Dopointdata=0;
@@ -376,17 +401,19 @@ classdef meshio
             end
             
             if (Docelldata && Dopointdata)
-            
-            meshio.write(filename,objin.vtx,objin.cells(end).tri,objin.cell_data,objin.cell_data_name,objin.point_data,objin.point_data_name)
+                
+                meshio.write(filename,objin.vtx,objin.cells,objin.cell_data,objin.cell_data_name,objin.point_data,objin.point_data_name)
             else
                 if Docelldata
-                   meshio.write(filename,objin.vtx,objin.cells(end).tri,objin.cell_data,objin.cell_data_name)
+                    meshio.write(filename,objin.vtx,objin.cells,objin.cell_data,objin.cell_data_name)
                 end
                 if Dopointdata
-                    meshio.write(filename,objin.vtx,objin.cells(end).tri,[],[],objin.point_data,objin.point_data_name)
+                    meshio.write(filename,objin.vtx,objin.cells,[],[],objin.point_data,objin.point_data_name)
+                end
+                if ~any([Docelldata Dopointdata])
+                    meshio.write(filename,objin.vtx,objin.cells);
                 end
             end
-            
         end
         
         
