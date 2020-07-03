@@ -33,12 +33,6 @@ meshio.write(outpathvtu,P)
 F=meshio.read(inpathmulti)
 meshio.write_points_cells(outpathmultivtu,F.points,F.cells)
 
-fc=F.cells
-fnewcell=[]
-fnewcell.append((fc[1].type,fc[1].data))
-fnewcell.append((fc[2].type,fc[2].data))
-
-meshio.write_points_cells(outpathmultivtu,F.points,fnewcell)
 PP=meshio.read(outpathmultivtu)
 
 

@@ -19,12 +19,16 @@ This has only been tested on Matlab 2019b with Python 3.8.3
 ```matlab
 P=meshio.read(fname); % .msh .vtk .vtu .stl .obj TetGen ANSYS ...
 
-% P.vtx - verticies
-% P.Cells - structure array for each geometry saved in file
-% P.Cells.tri - Trigangulation connectivity list for this cell
-% P.Cells.type - 'Tetra','Triangle','Line','Vertex'
+% P.vtx             - verticies
+% P.Cells           - structure array for each geometry saved in file
+% P.Cells.tri       - Trigangulation connectivity list for this cell
+% P.Cells.type      - 'Tetra','Triangle','Line','Vertex'
+% P.cell_data       - Per element data in cell array
+% P.cell_data_name  - Data names in cell array
+% P.point_data      - Per point data in cell array
+% P.point_data_name - Data names in cell array
 
-% all contents can be plotted with
+% all contents can be plotted using:
 meshio.plot(P);
 ```
 
@@ -39,12 +43,21 @@ dt = delaunayTriangulation(x,y,z);
 dataex=1:size(dt.ConnectivityList,1);
 
 %write to gmsh file with cell data
-meshio.write('example.msh',dt.Points,dt.ConnectivityList,dataex);
+meshio.write('example.msh',dt.Points,dt.ConnectivityList,{dataex},{'Data'});
 ```
 
 This can then be loaded directly into [gmsh](https://gmsh.info/)
 ![gmsh](examples/figures/RandEx_gmsh.png)
 
-or into paraview (either by writing to .vtu or using meshio paraview plugin)
+or into paraview (either by writing to .vtu or loading .msh using meshio paraview plugin)
 
 ![paraview](examples/figures/RandEx_paraview.png)
+
+### Convert file
+
+Conversion through `meshio-convert` binary is harder to fit into matlab workflow, so this library can be used too
+
+```matlab
+P=meshio.read('example.msh');
+meshio.structwrite('example.vtu',P);
+```
