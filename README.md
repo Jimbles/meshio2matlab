@@ -47,6 +47,7 @@ meshio.write('example.msh',dt.Points,dt.ConnectivityList,{dataex},{'Data'});
 ```
 
 This can then be loaded directly into [gmsh](https://gmsh.info/)
+
 ![gmsh](examples/figures/RandEx_gmsh.png)
 
 or into paraview (either by writing to .vtu or loading .msh using meshio paraview plugin)
