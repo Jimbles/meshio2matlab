@@ -6,11 +6,15 @@ Matlab ❤ Meshio
 
 ## Requirements
 
-- Python install that [Matlab is happy with](https://www.mathworks.com/help/matlab/matlab_external/system-and-configuration-requirements.html)
+- Python install that [Matlab is happy with](https://www.mathworks.com/help/matlab/matlab_external/system-and-configuration-requirements.html). Check that `pyenv` in matlab gives you the correct version.
 - [Meshio](https://github.com/nschloe/meshio) - `pip install meshio[all]`
 - Matlab >2014b
 
-This has only been tested on Matlab 2019b with Python 3.8.3
+This has only been tested on Matlab 2018/2019b with Python 3.7 & 3.8 on Windows 10.
+
+## Installation
+
+Add the `src` folder to matlab path
 
 ## Usage
 

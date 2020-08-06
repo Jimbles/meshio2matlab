@@ -277,6 +277,7 @@ classdef meshio
                 pycellslist.append(pycellblock);
                 
                 celltypes{iC}=cells(iC).type;
+                cellsize(iC)=size(cells(iC).tri,1);
                 
             end
             
@@ -329,7 +330,7 @@ classdef meshio
                     curName=cell_data_name{iCelldata};
                     fprintf(' %s ',curName);
                     
-                    if ~any(size(curData) == size(cells,1))
+                    if ~any(ismember(size(curData),cellsize))
                         warning('Celldata %d %s does not match number of elements/cells',iCelldata,curName);
                     end
                     
