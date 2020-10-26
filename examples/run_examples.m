@@ -18,67 +18,80 @@ pointdata={pointdataex,pointdataex+1,pointdataex+2};
 pointdataname={'test','teest','tesest'};
 
 %write with no data
-meshio.write('example1.msh',dt.Points,dt.ConnectivityList);
-A=meshio.read('example1.msh');
+meshio.write('testout/example1.msh',dt.Points,dt.ConnectivityList);
+A=meshio.read('testout/example1.msh');
 
 assert(isequal(A.vtx,dt.Points));
 
 
 %write with cell data
-meshio.write('examplecell1.msh',dt.Points,dt.ConnectivityList,celldata(1),celldataname(1));
-B=meshio.read('examplecell1.msh');
+meshio.write('testout/examplecell1.msh',dt.Points,dt.ConnectivityList,celldata(1),celldataname(1));
+B=meshio.read('testout/examplecell1.msh');
 
 assert(isequal(celldata(1),B.cell_data));
 
-meshio.write('examplecell2.msh',dt.Points,dt.ConnectivityList,celldata,celldataname);
-C=meshio.read('examplecell2.msh');
+meshio.write('testout/examplecell2.msh',dt.Points,dt.ConnectivityList,celldata,celldataname);
+C=meshio.read('testout/examplecell2.msh');
 
 assert(isequal(celldata,C.cell_data));
 
 
 % write with point data
-meshio.write('examplepoint1.msh',dt.Points,dt.ConnectivityList,[],[],pointdata(1),pointdataname(1));
-D=meshio.read('examplepoint1.msh');
+meshio.write('testout/examplepoint1.msh',dt.Points,dt.ConnectivityList,[],[],pointdata(1),pointdataname(1));
+D=meshio.read('testout/examplepoint1.msh');
 
 assert(isequal(pointdata(1),D.point_data));
 
-meshio.write('examplepoint2.msh',dt.Points,dt.ConnectivityList,[],[],pointdata,pointdataname);
-E=meshio.read('examplepoint2.msh');
+meshio.write('testout/examplepoint2.msh',dt.Points,dt.ConnectivityList,[],[],pointdata,pointdataname);
+E=meshio.read('testout/examplepoint2.msh');
 
 assert(isequal(pointdata,E.point_data));
 
 %write with both point and cell data
-meshio.write('examplepointcell.msh',dt.Points,dt.ConnectivityList,celldata,celldataname,pointdata,pointdataname);
-F=meshio.read('examplepointcell.msh');
+meshio.write('testout/examplepointcell.msh',dt.Points,dt.ConnectivityList,celldata,celldataname,pointdata,pointdataname);
+F=meshio.read('testout/examplepointcell.msh');
 
 assert(isequal(pointdata,F.point_data) && isequal(celldata,F.cell_data));
 
 %convert file using structwrite
-meshio.structwrite('examplecell.vtu',C);
-meshio.structwrite('examplepoint.vtu',E);
-meshio.structwrite('examplepointcell.vtu',F);
-
+meshio.structwrite('testout/examplecell.vtu',C);
+meshio.structwrite('testout/examplepoint.vtu',E);
+meshio.structwrite('testout/examplepointcell.vtu',F);
 
 %% read gmsh file
 
 % example gmsh file is conversion from .stl file 
 % this contains vertcies, lines, triangles and tetrahedra which are all read
 % order is always vert/line/tri/tetra
-fname=('finger_3D.msh');
+fname=('finger_3D');
 
-P=meshio.read(fname);
+P=meshio.read([fname '.msh']);
 meshio.plot(P);
 
-% extract just the lines/triangles/tetrahedra
+% extract just the tetrahedra
 Ptet=P;
-Ptet.cells=Ptet.cells(23:end);
+Ptet.cells=Ptet.cells(end);
 meshio.plot(Ptet);
 
-meshio.structwrite('examplemulti.vtu',Ptet);
+% write file back to vtu N.B. meshio merges cells of the same type
+meshio.structwrite([fname '.vtu'],P);
+Pvtu=meshio.read([fname '.vtu']);
+%Ptvu only has 4 cells, each for all vertex,line,tri,tetra
+
+% meshio cannot write .msh files with different cell types in at the moment
+% (meshio v 4.0.16). So write each type to a separate file and merge them
+% in gmsh
+
+try
+meshio.structwrite('testout/error.msh',P);
+
+catch
+    fprintf(2,'\n -----------\n meshio can only write 1 cell type (e.g. tetra) to msh file \n -----------\n');
+end
 
 
 %% read vtu and write new data
-fname=('NNexample.vtu');
+fname='NNexample.vtu';
 fnameoutcell='NNexampleNewDataC.vtu';
 fnameoutpoint='NNexampleNewDataP.vtu';
 

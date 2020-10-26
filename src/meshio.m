@@ -6,10 +6,10 @@ classdef meshio
     %   more formats at:
     %   https://github.com/nschloe/meshio
     %
-    % meshio.read - read mesh file
-    % meshio.write - write matlab mesh to file
-    % meshio.plot - plot all contents of a meshfile
-    %
+    % meshio.read        - read mesh file to struct
+    % meshio.write       - write matlab mesh to file
+    % meshio.plot        - plot all contents of a meshfile
+    % meshio.structwrite - write meshio.read output struct to file
     %
     % utilities
     % meshio.np2mat - np array to matlab array
@@ -64,7 +64,11 @@ classdef meshio
             %meshio.read read mesh file using python meshio
             %   Calls python meshio library and processes output to a
             %   matlab struct
-            %
+            %   
+            % Inputs:
+            % filename - needs extension .msh .vtu .vtk etc.
+            % 
+            % Output:
             % objout.vtx - verticies
             % objout.Cells - structure array for each geometry saved in file
             %       .Cells.tri - Trigangulation connectivity list for this cell
@@ -73,6 +77,12 @@ classdef meshio
             % objout.cell_data_name - {cell array}
             % objout.point_data - data for each vertex {cell array}
             % objout.point_data_name - {cell array}
+            %
+            % Usage:
+            % %read data 
+            % M=meshio.read('example.msh');
+            % %plot contents
+            % meshio.plot(M);
             
             
             % ------ load meshes ------
@@ -190,13 +200,33 @@ classdef meshio
         function fileout = write(filename,points,cells,cell_data,cell_data_name,point_data,point_data_name)
             %meshio.write write mesh to file using meshio library
             %
-            % Inputs
-            % filename - needs extension
-            % points - vtx
-            % cells - connectivity array
-            % [data] - optional must match size of points or nodes
-            % [dataname] - optional string
-            
+            % Inputs:
+            % filename  -   needs extension .msh .vtu .vtk etc.
+            % points    -   vtx coordinates
+            % cells     -   connectivity array OR struct of cells.tri cells.type
+            %               as obtained from meshio.read
+            % [cell_data]         -  element data in {cell array}
+            % [cell_data_name]    -  strings in {cell array}
+            % [point_data]        -  optional must match size of points or nodes
+            % [point_data_name]   -  optional string
+            %
+            %
+            % Usage - simple example
+            % x = rand(20,1);
+            % y = rand(20,1);
+            % z= rand(20,1);
+            % dt = delaunayTriangulation(x,y,z);
+            % meshio.write('test.msh',dt.Points,dt.ConnectivityList);
+            %
+            % With cell and point data
+            % celldata={1:size(dt.ConnectivityList,1)};
+            % celldataname={'celldata'};
+            % meshio.write('test.msh',dt.Points,dt.ConnectivityList,celldata,celldataname);
+            % 
+            % pointdata={1:size(dt.Points,1)};
+            % pointdataname={'pointdata'};
+            % meshio.write('test.msh',dt.Points,dt.ConnectivityList,[],[],pointdata,pointdataname);
+
             
             fprintf('Meshio writing to meshfile : %s\n',filename);
             
@@ -228,7 +258,7 @@ classdef meshio
             pycellslist=py.list;
             
             nCells=size(cells,2);
-            vertexwarn=0;
+
             
             for iC=1:nCells
                 
@@ -236,23 +266,28 @@ classdef meshio
                 % meshio needs nodes as int32
                 pycells = meshio.mat2nparray(int32(cells(iC).tri -1));
                 
-                %correct for wrong shape if only 1 vertex - Not working as
-                %getting Python Error: IndexError: tuple index out of range
+                %correct for wrong shape if only 1 vertex
                 if size(cells(iC).tri) ==1
-                    pycells=py.numpy.reshape(pycells,int32(1));
-                    if vertexwarn==0
-                    fprintf(2,'Writing verticies not currently working, so ignoring all\n');
-                    vertexwarn=1;
-                    end
-                    continue
+                    pycells.shape=py.tuple({int32(1),int32(1)});
                 end
-                    
+                                    
                 % put nodes into a list of CellBlock type
-                 %pycellblock = py.meshio.CellBlock(cells(iC).type,pycells);
                 pycellblock=py.tuple({cells(iC).type,pycells});
                 
                 pycellslist.append(pycellblock);
+                
+                celltypes{iC}=cells(iC).type;
+                cellsize(iC)=size(cells(iC).tri,1);
+                
             end
+            
+            % multiple cells of the same type will be merged into single
+            % cell automatically by meshio, so warn user this is happening
+            if (size(celltypes,2) > size(unique(celltypes),2))
+                fprintf(2,'Caution repeated cell types will be merged by meshio \n');
+            end
+            
+            
             
             
             % ------ convert cell and point data if needed ------
@@ -295,7 +330,7 @@ classdef meshio
                     curName=cell_data_name{iCelldata};
                     fprintf(' %s ',curName);
                     
-                    if ~any(size(curData) == size(cells,1))
+                    if ~any(ismember(size(curData),cellsize))
                         warning('Celldata %d %s does not match number of elements/cells',iCelldata,curName);
                     end
                     
@@ -383,23 +418,36 @@ classdef meshio
         
         function fileout = structwrite(filename,objin)
             %meshio.structwrite write file using struct output from meshio.read
-            % this function is a wrapper for meshio.write
+            % this function is a wrapper for meshio.write to make it more
+            % convenient to convert files
+            %
+            % Inputs:
+            % filename  - needs extension .msh .vtu .vtk etc.
+            % objin     - struct same as meshio.read output
+            %
+            % Usage:
+            % M=meshio.read('example.msh');
+            % meshio.structwrite('example.vtu',M);
             
             Docelldata=0;
             Dopointdata=0;
             
+            % check if cell data is present
             if all(isfield(objin,{'cell_data','cell_data_name'}))
                 if ~isempty(objin.cell_data{1})
                     Docelldata=1;
                 end
             end
             
+            % check if point data is present
             if all(isfield(objin,{'point_data','point_data_name'}))
                 if ~isempty(objin.point_data{1})
                     Dopointdata=1;
                 end
             end
             
+            % call meshio.write with appropriate inputs. this is a kludge
+            % im sorry!
             if (Docelldata && Dopointdata)
                 
                 meshio.write(filename,objin.vtx,objin.cells,objin.cell_data,objin.cell_data_name,objin.point_data,objin.point_data_name)
@@ -421,7 +469,12 @@ classdef meshio
             %plot plot all elements within a chosen file
             % plots verticies, lines and triangles. plots surface mesh of
             % tetra meshes
+            %
             % Use paraview for viewing data as its much better!
+            %
+            % Inputs:
+            % objin     - struct from meshio.write
+            
             numCells = size(objin.cells,2);
             figure
             hold on
